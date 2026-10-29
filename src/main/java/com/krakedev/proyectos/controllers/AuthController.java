@@ -8,6 +8,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+
 import java.util.Map;
 import java.util.Optional;
 
@@ -73,5 +76,19 @@ public class AuthController {
         }
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body("Token no proporcionado o formato incorrecto");
+    }
+
+    // GET /api/auth/perfil — devuelve los datos del usuario autenticado
+    @GetMapping("/perfil")
+    public ResponseEntity<?> perfil() {
+        // Lee la identidad directamente del contexto de seguridad de Spring
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String username = authentication.getName();
+        String rol = authentication.getAuthorities().iterator().next().getAuthority();
+
+        return ResponseEntity.ok(Map.of(
+                "username", username,
+                "rol", rol
+        ));
     }
 }
