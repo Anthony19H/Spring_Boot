@@ -1,6 +1,8 @@
 package com.krakedev.proyectos.controllers;
 
 import com.krakedev.proyectos.entidades.Usuario;
+import com.krakedev.proyectos.security.JwtUtil;
+import com.krakedev.proyectos.services.TokenBlacklistService;
 import com.krakedev.proyectos.services.UsuarioService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,9 +16,13 @@ import java.util.Optional;
 public class AuthController {
 
     private final UsuarioService usuarioService;
+    private final JwtUtil jwtUtil;
+    private final TokenBlacklistService blacklistService;
 
-    public AuthController(UsuarioService usuarioService) {
+    public AuthController(UsuarioService usuarioService, JwtUtil jwtUtil, TokenBlacklistService blacklistService) {
         this.usuarioService = usuarioService;
+        this.jwtUtil = jwtUtil;
+        this.blacklistService = blacklistService;
     }
 
     // POST /api/auth/registrar
@@ -24,7 +30,6 @@ public class AuthController {
     public ResponseEntity<?> registrar(@RequestBody Usuario usuario) {
         try {
             Usuario nuevo = usuarioService.registrar(usuario);
-            // No devolvemos la contraseña hasheada en la respuesta
             nuevo.setPassword("[PROTEGIDA]");
             return ResponseEntity.status(HttpStatus.CREATED).body(nuevo);
         } catch (Exception e) {
@@ -33,7 +38,7 @@ public class AuthController {
         }
     }
 
-    // POST /api/auth/login
+    // POST /api/auth/login — devuelve el token JWT
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Map<String, String> credenciales) {
         String username = credenciales.get("username");
@@ -42,14 +47,31 @@ public class AuthController {
         Optional<Usuario> usuarioOpt = usuarioService.login(username, password);
 
         if (usuarioOpt.isPresent()) {
+            Usuario usuario = usuarioOpt.get();
+            // Genera el token con el username y el rol
+            String token = jwtUtil.generarToken(usuario.getUsername(), usuario.getRol());
             return ResponseEntity.ok(Map.of(
                     "mensaje", "Login exitoso",
-                    "username", usuarioOpt.get().getUsername(),
-                    "rol", usuarioOpt.get().getRol()
+                    "token", token,
+                    "username", usuario.getUsername(),
+                    "rol", usuario.getRol()
             ));
         }
 
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body("Credenciales incorrectas");
+    }
+
+    // POST /api/auth/logout — invalida el token
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout(@RequestHeader("Authorization") String authHeader) {
+        // El header llega como "Bearer <TOKEN>", extraemos solo el token
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7);
+            blacklistService.invalidarToken(token);
+            return ResponseEntity.ok(Map.of("mensaje", "Sesión cerrada correctamente"));
+        }
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body("Token no proporcionado o formato incorrecto");
     }
 }
